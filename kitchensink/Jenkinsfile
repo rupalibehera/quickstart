@@ -1,0 +1,33 @@
+#!/usr/bin/groovy
+node('maven') {
+    stage 'Checkout'
+    checkout scm
+
+    stage 'Build'
+    sh 'cd kitchensink && mvn clean compile'
+
+    stage 'Run Unit Tests'
+    echo "No unit Tests"
+
+    stage 'Package'
+    sh 'cd kitchensink && mvn package && ls -la'
+
+    stage 'Archive artifact'
+    sh 'mkdir -p artifacts/deployments && cp kitchensink/target/*.war artifacts/deployments'
+    archive 'kitchensink/target/*.war'
+
+    stage 'Create Image'
+    sh 'oc login https://kubernetes.default -u admin -p admin --insecure-skip-tls-verify=true'
+    sh 'oc new-project kitchensinkproject'
+    sh 'oc project kitchensinkproject'
+    sh 'oc process -f https://github.com/tnozicka/openshift-templates/raw/master/binary-build-template.yaml \
+       -v "APP_NAME=wildfly-kitchensink-app,BUILDER_IMAGE=docker.io/openshift/wildfly-100-centos7,OUTPUT_IMAGESTREAM_TAG=wildfly-kitchensink-app:latest" | oc create -f -'
+    sh 'oc start-build wildfly-kitchensink-app --from-dir=artifacts/ --follow'
+
+    stage 'Deploy'
+    sh 'oc process -f kitchensink/deployment-template.yaml -v "APP_NAME=wildfly-kitchensink-app,IMAGE_STREAM_NAMESPACE=kitchensinkproject,IMAGE_STREAM_TAG=wildfly-kitchensink-app:latest" ' +
+       '| oc apply -f -'
+
+    //sh 'cd kitchensink && mvn test -Parq-wildfly-remote'
+
+}

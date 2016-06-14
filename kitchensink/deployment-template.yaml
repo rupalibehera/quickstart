@@ -1,0 +1,100 @@
+kind: "Template"
+apiVersion: "v1"
+metadata:
+  name: "jboss-wildfly-binary-build"
+  creationTimestamp: null
+  annotations:
+    description: "Application template for wildfly applications built using Binary build."
+    iconClass: "icon-jboss"
+    version: "1.0.0"
+
+parameters:
+  - name: "APP_NAME"
+    description: "The name for the application."
+    required: true
+  - name: IMAGE_STREAM_TAG
+    description: "ImageStream Tag. e.g. 'APP_NAME:latest'"
+    required: true
+  - name: "IMAGE_STREAM_NAMESPACE"
+    description: "Namespace in which the ImageStreams for Red Hat Middleware images are installed. These ImageStreams are normally installed in the openshift namespace. You should only need to modify this if you've installed the ImageStreams in a different namespace/project."
+    value: ""
+    required: true
+
+objects:
+  - kind: "Service"
+    apiVersion: "v1"
+    spec:
+      ports:
+        -
+          port: 8080
+          targetPort: 8080
+      selector:
+        deploymentConfig: "${APP_NAME}"
+    metadata:
+      name: "${APP_NAME}"
+      labels:
+        application: "${APP_NAME}"
+      annotations:
+        description: "The web server's http port."
+  - kind: "Route"
+    apiVersion: "v1"
+    metadata:
+      name: "${APP_NAME}"
+      labels:
+        application: "${APP_NAME}"
+      annotations:
+        description: "Route for application's http service."
+    spec:
+      host: ""
+      to:
+        kind: "Service"
+        name: "${APP_NAME}"
+  - kind: "DeploymentConfig"
+    apiVersion: "v1"
+    metadata:
+      name: "${APP_NAME}"
+      labels:
+        application: "${APP_NAME}"
+    spec:
+      strategy:
+        type: "Recreate"
+      triggers:
+        - type: "ConfigChange"
+        - type: "ImageChange"
+          imageChangeParams:
+            automatic: true
+            containerNames:
+              - "${APP_NAME}"
+            from:
+              kind: "ImageStreamTag"
+              name: "${IMAGE_STREAM_TAG}"
+              namespace: "${IMAGE_STREAM_NAMESPACE}"
+            lastTriggeredImage: ""
+      replicas: 1
+      selector:
+        deploymentConfig: "${APP_NAME}"
+      template:
+        metadata:
+          name: "${APP_NAME}"
+          labels:
+            deploymentConfig: "${APP_NAME}"
+            application: "${APP_NAME}"
+        spec:
+          terminationGracePeriodSeconds: 60
+          containers:
+            - name: "${APP_NAME}"
+              image: " "
+              imagePullPolicy: "Always"
+              ports:
+                - name: "jolokia"
+                  containerPort: 8778
+                  protocol: "TCP"
+                - name: "http"
+                  containerPort: 8080
+                  protocol: "TCP"
+                - name: "http-remoting"
+                  containerPort: 9990
+                  protocol: "TCP"
+                - name: "ping"
+                  containerPort: 8888
+                  protocol: "TCP"
