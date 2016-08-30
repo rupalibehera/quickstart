@@ -84,6 +84,8 @@ objects:
     apiVersion: "v1"
     metadata:
       name: management-service
+      labels:
+        application: management-service
     spec:
       host: "${MANAGEMENT_SERVICE_URL}"
       path: /
