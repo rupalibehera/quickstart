@@ -36,7 +36,11 @@ node('maven') {
     stage 'Deploy'
     sh "oc process -f kitchensink/.openshift-pipeline/deployment-template.yaml -v 'APP_NAME=wildfly-kitchensink-app,IMAGE_STREAM_NAMESPACE=${k8s_namespace},IMAGE_STREAM_TAG=wildfly-kitchensink-app:latest' | oc apply -f -"
     sh 'oc annotate is wildfly-kitchensink-app misc_$(date +%s)=foo || true' // Hack for 0-2 minute pause caused by https://github.com/openshift/origin/issues/9018
-
-    //sh 'cd kitchensink && mvn test -Parq-wildfly-remote'
+    sh 'sleep 50'
+    sh "PODNAME=$(oc get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{end}}' --selector='deploymentConfig=wildfly-kitchensink-app') \
+        && oc exec $PODNAME bash /wildfly/bin/add-user.sh adminUser adminPassword ManagementRealm"
+    sh "cd kitchensink && HOSTNAME=$(oc get routes -o go-template --template '{{range .items}}{{.spec.host}}{{"\n"}}{{end}}' --selector='application=wildfly-kitchensink-app') &&
+        MANAGEMENT_ADDRESS=$(oc get routes -o go-template --template '{{range .items}}{{.spec.host}}{{"\n"}}{{end}}' --selector='application=management-service') &&
+        mvn test -Parq-wildfly-remote"
 
 }

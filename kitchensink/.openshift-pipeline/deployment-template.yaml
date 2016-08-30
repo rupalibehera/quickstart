@@ -53,6 +53,8 @@ objects:
     apiVersion: v1
     metadata:
       name: management-service
+      labels:
+        application: "management-service"
     spec:
       ports:
         - nodePort: 0
