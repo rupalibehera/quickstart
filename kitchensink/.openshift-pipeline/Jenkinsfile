@@ -41,6 +41,6 @@ node('maven') {
 
     stage 'Run Integration Tests'
     sh "cp kitchensink/.openshift-pipeline/arquillian.xml kitchensink/src/test/resources/arquillian.xml"
-    sh "cd kitchensink && HOSTNAME=\$(oc get routes -o go-template --template '{{range .items}}{{.spec.host}}{{end}}' --selector='application=wildfly-kitchensink-app') && MANAGEMENT_ADDRESS=\$(oc get routes -o go-template --template '{{range .items}}{{.spec.host}}{{end}}' --selector='application=management-service') && mvn test -Parq-wildfly-remote"
+    sh "cd kitchensink && export HOSTNAME=\$(oc get routes -o go-template --template '{{range .items}}{{.spec.host}}{{end}}' --selector='application=wildfly-kitchensink-app') && export MANAGEMENT_ADDRESS=\$(oc get routes -o go-template --template '{{range .items}}{{.spec.host}}{{end}}' --selector='application=management-service') && mvn test -Parq-wildfly-remote"
 
 }
