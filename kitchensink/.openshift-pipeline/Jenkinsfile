@@ -37,7 +37,7 @@ node('maven') {
     sh "oc process -f kitchensink/.openshift-pipeline/deployment-template.yaml -v 'APP_NAME=wildfly-kitchensink-app,IMAGE_STREAM_NAMESPACE=${k8s_namespace},IMAGE_STREAM_TAG=wildfly-kitchensink-app:latest' | oc apply -f -"
     sh 'oc annotate is wildfly-kitchensink-app misc_$(date +%s)=foo || true' // Hack for 0-2 minute pause caused by https://github.com/openshift/origin/issues/9018
     //sleeping for 30 sec for the pod to become completely ready
-    sh 'sleep 30'
+    sh 'sleep 40'
     sh "while [[ (200 != \$(curl --write-out %{http_code} --silent --output /dev/null http://wildfly-kitchensink-app:8080)) ]]; do echo 'Waiting for service to come up...'; sleep 1; done && echo 'Service is up.' "
 
     stage 'Run Integration Tests'
