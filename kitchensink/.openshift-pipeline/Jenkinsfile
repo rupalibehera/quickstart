@@ -17,8 +17,6 @@ node('maven') {
     sh 'cd kitchensink && mvn clean compile'
 
     stage 'Package'
-    // jboss-web.xml is used here so that the war is deployed at context root /
-    sh 'cp kitchensink/.openshift-pipeline/jboss-web.xml kitchensink/src/main/webapp/WEB-INF'
     sh 'cd kitchensink && mvn package'
 
     stage 'Archive artifact'

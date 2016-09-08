@@ -76,7 +76,7 @@ objects:
         description: "Route for application's http service."
     spec:
       host: "${SERVICE_URL}"
-      path: /
+      path: /wildfly-kitchensink/
       to:
         kind: "Service"
         name: "${APP_NAME}"
