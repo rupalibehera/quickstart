@@ -31,12 +31,12 @@ node('maven') {
 
     sh 'oc process -f https://github.com/tnozicka/openshift-templates/raw/master/binary-build-template.yaml \
        -v "APP_NAME=wildfly-kitchensink-app,BUILDER_IMAGE=docker.io/openshift/wildfly-100-centos7,OUTPUT_IMAGESTREAM_TAG=wildfly-kitchensink-app:latest" | oc create -f -'
-    sh 'oc start-build wildfly-kitchensink-app --from-dir=artifacts/ --follow'
+    sh 'oc start-build wildfly-kitchensink-app --from-dir=artifacts/ --wait'
 
     stage 'Deploy'
     sh "oc process -f kitchensink/.openshift-pipeline/deployment-template.yaml -v 'APP_NAME=wildfly-kitchensink-app,IMAGE_STREAM_NAMESPACE=${k8s_namespace},IMAGE_STREAM_TAG=wildfly-kitchensink-app:latest' | oc apply -f -"
     sh 'oc annotate is wildfly-kitchensink-app misc_$(date +%s)=foo || true' // Hack for 0-2 minute pause caused by https://github.com/openshift/origin/issues/9018
-    //sleeping for 60 sec for the pod to become completely ready
+    //sleeping for 40 sec for the pod to become completely ready
     sh 'sleep 40'
     sh "while [[ (200 != \$(curl --write-out %{http_code} --silent --output /dev/null http://wildfly-kitchensink-app:8080)) ]]; do echo 'Waiting for service to come up...'; sleep 1; done && echo 'Service is up.' "
     // Arquillian test needs access to the wildfly managemant port 9990, hence we need to add Management user.
