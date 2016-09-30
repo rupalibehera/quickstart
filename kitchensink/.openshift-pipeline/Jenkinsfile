@@ -1,14 +1,6 @@
 #!/usr/bin/groovy
 
-def k8s_token = '<unknown>'
-
-node ('master') {
-    k8s_token = readFile '/var/run/secrets/kubernetes.io/serviceaccount/token'
-}
-
 node('maven') {
-
-    def k8s_namespace = readFile '/var/run/secrets/kubernetes.io/serviceaccount/namespace'
 
     stage 'Checkout'
     checkout scm
@@ -24,20 +16,44 @@ node('maven') {
     archive 'kitchensink/target/*.war'
 
     stage 'Create Image'
-    sh "oc login https://kubernetes.default/ --token=${k8s_token} --certificate-authority=/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    // we need to get newest 'oc' tool until the features are in stable release
+    sh 'set -o pipefail && curl -L https://github.com/tnozicka/origin/releases/download/latest/oc.tar.xz | tar -xJ -f -'
+    sh "oc login https://kubernetes.default/ --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) \
+           --certificate-authority=/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
     // Prepare the deployments so you can see pipeline in console overview when running for the first time
-    sh 'oc process -f kitchensink/.openshift-pipeline/empty-deployment-template.yaml -v "APP_NAME=wildfly-kitchensink-app" | oc apply -f -'
+    sh 'oc process -f kitchensink/.openshift-pipeline/deployment-template.yaml -v "APP_NAME=wildfly-kitchensink-app" | oc apply -f -'
 
-    sh 'oc process -f https://github.com/tnozicka/openshift-templates/raw/master/binary-build-template.yaml \
-       -v "APP_NAME=wildfly-kitchensink-app,BUILDER_IMAGE=docker.io/openshift/wildfly-100-centos7,OUTPUT_IMAGESTREAM_TAG=wildfly-kitchensink-app:latest" | oc create -f -'
-    sh 'oc start-build wildfly-kitchensink-app --from-dir=artifacts/ --wait'
+    // Prepare BC and IS
+    sh 'oc process -f kitchensink/.openshift-pipeline/build-template.yaml -v "APP_NAME=wildfly-kitchensink-app" | oc apply -f -'
+    sh 'oc start-build wildfly-kitchensink-app --from-dir=artifacts/ --follow --wait'
+
+    // "oc start-build" should provide us with image_ref, but let's hack it for now
+    sh 'oc get is wildfly-kitchensink-app -o go-template --template=\'{{range .status.tags}}{{if eq .tag "latest"}}{{(index .items 0).dockerImageReference}}{{end}}{{end}}\' > /tmp/pipeline-image_ref'
+    def image_ref = readFile '/tmp/pipeline-image_ref'
 
     stage 'Deploy'
-    sh "oc process -f kitchensink/.openshift-pipeline/deployment-template.yaml -v 'APP_NAME=wildfly-kitchensink-app,IMAGE_STREAM_NAMESPACE=${k8s_namespace},IMAGE_STREAM_TAG=wildfly-kitchensink-app:latest' | oc apply -f -"
-    sh 'oc annotate is wildfly-kitchensink-app misc_$(date +%s)=foo || true' // Hack for 0-2 minute pause caused by https://github.com/openshift/origin/issues/9018
-    //sleeping for 40 sec for the pod to become completely ready
-    sh 'sleep 40'
+    // Simulate "oc rollout latest" until it gets merged to Origin
+    sh "./oc set image dc/wildfly-kitchensink-app wildfly-kitchensink-app=${image_ref}"
+    sh './oc deploy wildfly-kitchensink-app --latest --follow'
+
+    sh '''
+        function status {
+            local version="$(oc get dc wildfly-kitchensink-app -o template --template='{{.status.latestVersion}}' || true)"
+            if ! [[ "${version}" =~ ^[0-9]+$ ]]; then
+                echo "Unknown" && return;
+            fi
+            local phase="$(oc get rc wildfly-kitchensink-app-${version} -o template --template='{{index .metadata.annotations "openshift.io/deployment.phase"}}')"
+            echo ${phase}
+        }
+        while [[ "$(status)" == "Running" ]]; do echo "Waiting for deployment to finish" && sleep 1; done
+        if [[ "$(status)" != "Complete" ]]; then
+            exit 1;
+        fi
+    '''//.stripMargin()
+    // oc rollout is not merged yet; the hack above won't be needed after that
+    // sh './oc rollout status wildfly-kitchensink-app'  // to ensure proper return code; will not be nessecary with 'oc rollout latest --follow --wait' if --wait makes it to master
+
     sh "while [[ (200 != \$(curl --write-out %{http_code} --silent --output /dev/null http://wildfly-kitchensink-app:8080)) ]]; do echo 'Waiting for service to come up...'; sleep 1; done && echo 'Service is up.' "
     // Arquillian test needs access to the wildfly managemant port 9990, hence we need to add Management user.
     sh "PODNAME=\$(oc get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{end}}' --selector='deploymentConfig=wildfly-kitchensink-app') && oc exec \${PODNAME} bash /wildfly/bin/add-user.sh adminUser adminPassword ManagementRealm"

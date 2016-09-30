@@ -17,8 +17,7 @@ parameters:
     required: true
   - name: "IMAGE_STREAM_NAMESPACE"
     description: "Namespace in which the ImageStreams for Red Hat Middleware images are installed. These ImageStreams are normally installed in the openshift namespace. You should only need to modify this if you've installed the ImageStreams in a different namespace/project."
-    value: ""
-    required: true
+    value: "wildfly-kitchensink-app:latest"
   - name: "SERVICE_URL"
     displayName: "Service URL"
     description: ""
