@@ -1,0 +1,118 @@
+/* Jenkins Plugins, Packages and prerequisites
+1. Maven Integration plugin 
+2. Pipeline Maven Integration Plugin ( https://plugins.jenkins.io/pipeline-maven )
+3. Maven Name set in Global Configuration Tool (Like : M3)
+4. Static Analysis Collector Plug-in 
+4. JDK 8 or Higher
+5. Use Pipeline SCM 
+6. JenkinsFile path /kitchensink/Jenkinsfile
+7. Jenkins In script approval for below methods:
+    method hudson.plugins.git.GitSCM getUserRemoteConfigs
+    method hudson.plugins.git.GitSCM getBranches
+    method hudson.plugins.git.GitSCMBackwardCompatibility getExtensions
+    method hudson.plugins.git.UserRemoteConfig getUrl
+   (Manage Jenkins -> 	In-process Script Approval)
+8. Fix for: "[WARNING] Cannot get the branch information from the git repository:  Detecting the current branch failed: fatal: ref HEAD is not a symbolic ref"
+   In the Jenkins Job, add this option:
+        Git Repositories -> Additional Behaviours -> Check out to specific local branch
+*/
+
+def source_repo_checkout() {
+    stage ('Checkout') {
+      echo 'git checkout'
+      //  Use 'checkout scm' if you dont have admin rights on Jenkins to do In script approval and do Step 8. 
+      // checkout scm
+      // The below nested SCM object block needs In script approval in Jenkins
+      checkout([
+                 $class: 'GitSCM',
+                 branches: scm.branches,
+                 extensions: scm.extensions + [[$class: 'CleanCheckout'], [$class: 'LocalBranch', localBranch: 'new']],
+                 userRemoteConfigs: scm.userRemoteConfigs
+            ]) 
+    }
+}
+    
+def list_repo_name() {
+
+        def repo_url = scm.getUserRemoteConfigs()[0].getUrl()
+        getRepoName = load "kitchensink/getRepoName.groovy"
+        reponame = getRepoName.getRepoName(repo_url)
+        print "The repo name is -> ${reponame}"  
+        
+    }                  
+
+def build_war() {
+    stage ('Build war') {
+    //def mvnHome = tool 'M3'  
+    //Use Maven pipeline Plugin
+    // Maven installation name declared in the Jenkins "Global Tool Configuration"
+        withMaven(maven: 'M3') {
+            dir ('kitchensink') {
+                sh "ls -l"
+                echo 'Running -> mvn clean compile'
+                sh "mvn clean compile"
+            }
+        }
+    }    
+}
+
+def build_package() {
+    stage ('Package') { 
+    //Use Maven pipeline Plugin
+    // Maven installation name declared in the Jenkins "Global Tool Configuration"
+        withMaven(maven: 'M3'){
+            dir ('kitchensink') {
+                sh "ls -l"
+                echo 'Running -> mvn package'
+                sh "mvn package"
+            }
+        }
+    }    
+}
+
+def build_archive() {
+    stage ('Archive') {
+        echo 'Archiving Package'
+        dir ('kitchensink') {
+            sh "ls -l"
+            archiveArtifacts artifacts: 'target/*'
+        }
+    }    
+}
+    
+node {
+    
+    currentBuild.result = "SUCCESS"
+    try {
+            
+        //Stage 1 : Checkout Source control
+        source_repo_checkout()  
+        list_repo_name()
+        
+        
+        // Stage 2 : Build  War
+        build_war()
+        
+        // Stage 3 : Build Pacakge
+        build_package()
+        
+        //Stage 4: Archive
+        build_archive()
+        
+    }
+    
+   catch (err) {
+    
+        currentBuild.result = "FAILED"
+       
+         /* mail body: "Project build FAILED is here: ${env.BUILD_URL}",
+             from: 'xxx@domain.com',
+             replyTo: 'xyz@domain.com',
+             subject: 'Project build failed',
+             to: 'abc@domain.com'
+        
+        */
+        throw err 
+        
+    }
+}
